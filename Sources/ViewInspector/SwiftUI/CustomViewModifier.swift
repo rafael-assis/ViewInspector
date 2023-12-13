@@ -4,11 +4,11 @@ import SwiftUI
 public extension ViewType {
 
     struct ViewModifier<T>: KnownViewType, CustomViewType {
-        
+
         public static var typePrefix: String { "" }
-        
+
         public static var namespacedPrefixes: [String] { [] }
-        
+
         public static func inspectionCall(typeName: String) -> String {
             return "modifier(\(typeName).self\(ViewType.commaPlaceholder)\(ViewType.indexPlaceholder))"
         }
@@ -42,7 +42,7 @@ public extension InspectableView {
 
 @available(iOS 13.0, macOS 10.15, tvOS 13.0, *)
 extension ViewType.ViewModifier: SingleViewContent {
-    
+
     public static func child(_ content: Content) throws -> Content {
         if content.isCustomView {
             return try content.extractCustomView()
@@ -53,7 +53,7 @@ extension ViewType.ViewModifier: SingleViewContent {
 
 @available(iOS 13.0, macOS 10.15, tvOS 13.0, *)
 extension ViewType.ViewModifier: MultipleViewContent {
-    
+
     public static func children(_ content: Content) throws -> LazyGroup<Content> {
         return try content.extractCustomViewGroup()
     }
@@ -66,6 +66,7 @@ internal extension Content {
     func unwrappedModifiedContent() throws -> Content {
         let view = try Inspector.attribute(label: "content", value: self.view)
         var medium: Content.Medium
+
         if let modifier = self.view as? EnvironmentModifier,
            modifier.qualifiesAsEnvironmentModifier() {
             if let value = try? modifier.value(),
@@ -85,26 +86,21 @@ internal extension Content {
                let modifierBodyView = try? InspectableView<ViewType.ClassifiedView>(modifierBodyContent, parent: nil),
                let viewModifierContent = try? modifierBodyView.find(ViewType.ViewModifierContent.self) {
                 let overlayModifiers = Set(ViewSearch.modifierIdentities.map({ $0.name }))
-                viewModifierContent.content.medium.viewModifiers
-                    .filter { modifier in
+
+                // Recreates the medium to be used in unwrapping the inner content view
+                let viewModifierContentMedium = viewModifierContent.content.medium
+                medium = Medium(
+                    viewModifiers: medium.viewModifiers + viewModifierContentMedium.viewModifiers.filter { modifier in
                         return (modifier as? ModifierNameProvider)
                             .map { $0.modifierType(prefixOnly: true) }
                             .map { !overlayModifiers.contains($0) } ?? true
-                    }
-                    .forEach {
-                        medium = medium.appending(viewModifier: $0)
-                    }
-                viewModifierContent.content.medium.transitiveViewModifiers.forEach {
-                    medium = medium.appending(transitiveViewModifier: $0)
-                }
-                viewModifierContent.content.medium.environmentModifiers.forEach {
-                    medium = medium.appending(environmentModifier: $0)
-                }
-                viewModifierContent.content.medium.environmentObjects.forEach {
-                    medium = medium.appending(environmentObject: $0)
-                }
+                    },
+                    transitiveViewModifiers: viewModifierContentMedium.transitiveViewModifiers,
+                    environmentModifiers: viewModifierContentMedium.environmentModifiers,
+                    environmentObjects: viewModifierContentMedium.environmentObjects)
             }
         }
+
         return try Inspector.unwrap(view: view, medium: medium)
     }
 
@@ -119,10 +115,10 @@ internal extension Content {
 
 @available(iOS 13.0, macOS 10.15, tvOS 13.0, *)
 public extension ViewType {
-    
+
     struct ViewModifierContent: KnownViewType {
         public static var typePrefix: String = "_ViewModifier_Content"
-        
+
         public static func inspectionCall(typeName: String) -> String {
             return "viewModifierContent(\(ViewType.indexPlaceholder))"
         }
@@ -133,7 +129,7 @@ public extension ViewType {
 
 @available(iOS 13.0, macOS 10.15, tvOS 13.0, *)
 public extension InspectableView where View: SingleViewContent {
-    
+
     func viewModifierContent() throws -> InspectableView<ViewType.ViewModifierContent> {
         return try .init(try child(), parent: self)
     }
@@ -143,7 +139,7 @@ public extension InspectableView where View: SingleViewContent {
 
 @available(iOS 13.0, macOS 10.15, tvOS 13.0, *)
 public extension InspectableView where View: MultipleViewContent {
-    
+
     func viewModifierContent(_ index: Int) throws -> InspectableView<ViewType.ViewModifierContent> {
         return try .init(try child(at: index), parent: self, index: index)
     }
